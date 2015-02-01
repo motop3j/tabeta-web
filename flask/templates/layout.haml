@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+%html lang='ja'
+  %head
+    %meta charset='utf-8'
+    %title
+      食べた！！
+    %link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css'
+    %link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap-theme.min.css'
+    %script src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js'
+    %script src='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/js/bootstrap.min.js'
+  %body
+    %h1
+      食べた
+
+    -if 'user' in session:
+      %a href="{{ url_for('signout') }}"
+        Sign out
+      %img src="{{ session['user']['profile_image_url'] }}"
+      %a href="http://twitter.com/{{ session['user']['screen_name'] }}"
+        @{{ session['user']['screen_name'] }}
+
+    -if 'page_title' in data:
+      %h2
+        {{ data['page_title'] }}
+    -with msgs = get_flashed_messages()
+      -if msgs
+        %ul
+          -for msg in msgs:
+            %li
+              {{msg}}
+
+      
+    -block body
