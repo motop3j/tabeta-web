@@ -19,15 +19,15 @@
       %a href="http://twitter.com/{{ session['user']['screen_name'] }}"
         @{{ session['user']['screen_name'] }}
 
-    -if 'page_title' in data:
-      %h2
-        {{ data['page_title'] }}
-    -with msgs = get_flashed_messages()
-      -if msgs
-        %ul
-          -for msg in msgs:
-            %li
-              {{msg}}
-
-      
-    -block body
+    %div.main
+      -if 'page_title' in data:
+        %h2
+          {{ data['page_title'] }}
+      -with msgs = get_flashed_messages()
+        -if msgs
+          %p.error
+            %ul
+              -for msg in msgs:
+                %li
+                  {{msg}}
+      -block body

@@ -3,7 +3,7 @@
 # 食べた！
 #===================================================================================================
 
-from flask import Flask, flash, request, redirect, render_template, session, url_for
+from flask import Flask, flash, request, redirect, render_template, session, url_for, make_response
 from werkzeug import ImmutableDict
 from rauth.service import OAuth1Service
 from rauth.utils import parse_utf8_qsl
@@ -11,6 +11,7 @@ from datetime import datetime
 import os 
 import logging 
 import yaml
+import sqlite3
 
 class FlaskWithHamlish(Flask):
     jinja_options = ImmutableDict(extensions = [
@@ -18,15 +19,63 @@ class FlaskWithHamlish(Flask):
         'hamlish_jinja.HamlishExtension'
     ])
 
-
 # Flask setup
 app = FlaskWithHamlish(__name__)
 # Setup logger
 log = logging.getLogger(__name__)
 
+class DB:
+    DATABASE_PATH = None
+    @classmethod
+    def get(cls):
+        con = sqlite3.connect(cls.DATABASE_PATH, isolation_level='DEFERRED')
+        con.row_factory = sqlite3.Row
+        return con
+
+class User:
+    @classmethod
+    def add(cls, screen_name, name, profile_image_url,
+        access_token, access_token_secret, service='twitter'):
+        con = DB.get()
+        cur = con.cursor()
+        user = cls.get(screen_name, cur=cur)
+        if user:
+            return user
+        sql = '''
+            insert into users (
+                service, screen_name, name, profile_image_url, access_token, access_token_secret
+            ) values (
+                ?, ?, ?, ?, ?, ?
+            )'''
+        cur.execute(sql,
+            (service, screen_name, name, profile_image_url, access_token, access_token_secret))
+        con.commit()
+        con.close()
+        user = cls.get(screen_name)
+        return user
+
+    @classmethod
+    def get(cls, screen_name, cur=None):
+        sql = 'select * from users where screen_name = ?'
+        if not cur:
+            con = DB.get()
+        c = cur if cur else con.cursor()
+        c.execute(sql, (screen_name,))
+        r = c.fetchone()
+        if not cur:
+            con.close()
+        if not r:
+            log.debug('The user dose not exist. ' + screen_name)
+            return None
+        user = {}
+        for i in range(0, len(r)):
+            user[r.keys()[i]] = r[i]
+        log.debug('user: %s' % str(user))
+        return user
+
 class Twitter:
-    CONSUMER_KEY = None
-    CONSUMER_SECRET =None
+    CONSUMER_KEY    = None
+    CONSUMER_SECRET = None
     @classmethod
     def get_service(cls): 
         service = OAuth1Service(
@@ -39,7 +88,11 @@ class Twitter:
             base_url='https://api.twitter.com/1.1/'
         )
         return service
-# views
+
+#---------------------------------------------------------------------------------------------------
+# View
+#---------------------------------------------------------------------------------------------------
+
 @app.route('/')
 def index():
     if not 'user' in session:
@@ -79,31 +132,34 @@ def callback():
         flash('Twitterでのサインインに問題が発生しました: ' + str(ex))
         return redirect(url_for('index'))
 
-    log.debug(twitter_session.access_token)
-    logging.debug(twitter_session.access_token_secret)
-
-    # get user profile
     verify = twitter_session.get('account/verify_credentials.json', params={'format':'json'}).json()
-    session['user'] = {
-        'service': 'twitter',
-        'name': verify['name'],
-        'screen_name': verify['screen_name'],
-        'profile_image_url': verify['profile_image_url']
-    }
+    user = User.add(verify['screen_name'], verify['name'], verify['profile_image_url'],
+        twitter_session.access_token, twitter_session.access_token_secret)
+    log.debug(user)
 
- 
+    session.permanent = True
+    session['user'] = {
+        'id': str(user['id']),
+        'screen_name': user['screen_name'],
+        'profile_image_url': user['profile_image_url']
+    }
     return redirect(url_for('index'))
  
 @app.route('/signout')
 def signout():
     session.pop('user', None)
     return redirect(url_for('index'))
- 
+
+#---------------------------------------------------------------------------------------------------
+# Main
+#---------------------------------------------------------------------------------------------------
+
 if __name__ == '__main__':
     with open(os.path.join(os.path.dirname(__file__), 'config.yaml')) as f:
         config = yaml.load(f)
     Twitter.CONSUMER_KEY = config['twitter']['consumer_key']
     Twitter.CONSUMER_SECRET = config['twitter']['consumer_secret']
+    DB.DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'db', 'tabeta.sqlite3')
     app.jinja_env.hamlish_mode = 'debug'
     app.secret_key = config['secret_key']
     logging.basicConfig(level=logging.DEBUG,
