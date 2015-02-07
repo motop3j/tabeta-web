@@ -2,6 +2,10 @@
 %html lang='ja'
   %head
     %meta charset='utf-8'
+    %meta http-equiv='X-UA-Compatible' content='IE=edge'
+    %meta name='viewport' content='width=device-width, initial-scale=1'
+    %meta name='description' content=''
+    %meta name='author' content=''
     %title
       食べた！！
     %link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css'
@@ -9,17 +13,27 @@
     %script src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js'
     %script src='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/js/bootstrap.min.js'
   %body
-    %h1
-      食べた
+    %div class="container"
+      %div class="header"
+        %nav
+          %ul class="nav nav-pills pull-right"
+            ;%li role="presentation" class="active"
+            ;  %a href="#"
+            ;    Home
+            -if 'user' in session:
+              %li role="presentation"
+                %a href="{{ url_for('signout') }}"
+                   Sign out
+              %li role="presentation"
+                %a href="http://twitter.com/{{ session['user']['screen_name'] }}"
+                  %img src="{{ session['user']['profile_image_url'] }}"
+                  @{{ session['user']['screen_name'] }}
+        %h1 class="text-muted"
+          食べた
 
-    -if 'user' in session:
-      %a href="{{ url_for('signout') }}"
-        Sign out
-      %img src="{{ session['user']['profile_image_url'] }}"
-      %a href="http://twitter.com/{{ session['user']['screen_name'] }}"
-        @{{ session['user']['screen_name'] }}
 
-    %div.main
+
+    %div.container
       -if 'page_title' in data:
         %h2
           {{ data['page_title'] }}

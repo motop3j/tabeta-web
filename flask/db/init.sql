@@ -1,5 +1,5 @@
 create table users (
-	id integer primary key autoincrement,
+	id 			integer primary key autoincrement,
 	service			text not null,
 	screen_name		text not null,
 	name 			text not null,
@@ -7,3 +7,13 @@ create table users (
 	access_token		text not null,
 	access_token_secret	text not null
 );
+
+create table weights (
+	userid		integer not null,
+	day		text not null,
+	weight		integer not null,
+	fatratio	integer,
+	primary key (userid, day)
+);
+
+

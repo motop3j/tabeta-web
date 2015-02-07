@@ -1,8 +1,17 @@
+; vim:fileencoding=utf8
 -extends 'layout.haml'
 
 -block body
-
-  %input type='date'
-
+  %form action="{{ url_for('regist_weight') }}"
+    %div.form-group
+      %label for='dayEntry'
+        日付
+      %input id='dayEntry' name='day' type='date'
+    %div.form-group
+      %label for='weightEntry'
+        体重
+      %input id='weightEntry' name='weightEntry' type='number' step='0.1'
+    %button type='submit' class='btn btn-default'
+      登録
 
 
