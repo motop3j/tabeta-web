@@ -11,6 +11,8 @@ import os
 import logging 
 import yaml
 import sqlite3
+import datetime
+import tempfile
 
 class FlaskWithHamlish(Flask):
     jinja_options = werkzeug.ImmutableDict(extensions = [
@@ -46,15 +48,38 @@ class DB:
 
 class Weight:
     @classmethod
-    def update(cls, id, day, weight):
-        pass
+    def update(cls, id, day, weight, fatratio=None):
+        con = DB.get()
+        cur = con.cursor()
+        weights = cls.get(id, day, cur)
+        params = []
+        if weights:
+            sql = '''
+                update weights set weight = ?, fatratio = ?
+                where userid = ? and day = ?
+            '''
+        else:
+            sql = 'insert into weights (weight, fatratio, userid, day) values (?, ?, ?, ?)'
+        params.extend((weight * 10, fatratio * 10 if fatratio else None, id, day))
+        cur.execute(sql, params)
+        con.commit()
+        con.close()
+        return cls.get(id, day)[0]
         
     @classmethod
-    def get(cls, id, day=None):
+    def get(cls, id, day=None, cur=None):
         sql = 'select day, weight, fatratio from weights'
+        params = ()
         if day:
             sql += ' where day = ?'
             params = (day,)
+        sql += ' order by day desc'
+        rows = DB.execute(sql, params, cur)
+        weights = []
+        for r in rows:
+            weights.append({'userid': id, 'day': r[0], 'weight': r[1]/10.0,
+                'fatratio': r[2]/10.0 if r[2] else None})
+        return weights 
 
 class User:
     @classmethod
@@ -130,7 +155,28 @@ def index():
     if not 'user' in session:
         return render_template('signin.haml', data={'page_title': 'Sign in'})
     log.debug(session['user'])
-    return render_template('index.haml', data={})
+    day = datetime.date.today().strftime('%Y-%m-%d')
+    weights = Weight.get(session['user']['id'])
+    weight = None
+    fatratio = None
+    for w in weights:
+        # 当日登録済みの場合はそのデータを表示
+        if w['day'] == day:
+            weight = w['weight']
+            fatratio = w['fatratio']
+            break
+        # 当日未登録の場合は直前の過去日のデータを表示
+        elif w['day'] < day:
+            weight = w['weight']
+            fatratio = w['fatratio']
+            break
+    # 過去体重情報がなければ初期値
+    if not weight:
+        weight = 50
+        fatratio = 15
+        
+    data={'today': day, 'weight': weight, 'fatratio': fatratio, 'weights': weights}
+    return render_template('index.haml', data=data)
  
 @app.route('/signin')
 def signin():
@@ -146,13 +192,13 @@ def signin():
 @app.route('/callback')
 def callback():
     if not 'request_token' in session:
-        flash('システムエラー: Request token not found.')
+        flash('システムエラー: Request token not found.', 'error')
         return redirect(url_for('index'))
     request_token, request_token_secret = session.pop('request_token')
  
     # check to make sure the user authorized the request
     if not 'oauth_token' in request.args:
-        flash('システムエラー: You did not authorize the request.')
+        flash('システムエラー: You did not authorize the request.', 'error')
         return redirect(url_for('index'))
  
     try:
@@ -163,7 +209,7 @@ def callback():
         params = {'oauth_verifier': request.args['oauth_verifier']}
         twitter_session = twitter_service.get_auth_session(params=params, **creds)
     except Exception as ex:
-        flash('Twitterでのサインインに問題が発生しました: ' + str(ex))
+        flash('Twitterでのサインインに問題が発生しました: ' + str(ex), 'error')
         return redirect(url_for('index'))
 
     verify = twitter_session.get(
@@ -180,13 +226,70 @@ def callback():
     }
     return redirect(url_for('index'))
 
+@app.route('/regist/photo', methods=['POST'])
+def regist_photo():
+    log.debug(request.files)
+    f = request.files['photo']
+    log.debug(f)
+    p = os.path.join(tempfile.mkdtemp(), 'image.' + f.filename.rsplit('.', 1)[1])
+    f.save(p)
+    log.debug(p)
+
+    return ""
+
 @app.route('/regist/weight')
 def regist_weight():
-    if 'day' in request.args.keys():
-        day = request.args.get('day')
-    if 'weight' in request.args.keys():
-        weight = request.args.get('weight')
-    return ""
+
+    err = False
+    # 不正なリクエストの判定
+    if not 'day' in request.args.keys():
+        flash('不正なリクエストです。[日付指定なし]', 'error')
+        err = True
+    if not 'weight' in request.args.keys():
+        flash('不正なリクエストです。[体重指定なし]', 'error')
+        err = True
+    if not 'fatratio' in request.args.keys():
+        flash('不正なリクエストです。[体脂肪指定なし]', 'error')
+        err = True
+    if err:
+        return redirect(url_for('index'))
+    # クエリー取得
+    day = request.args.get('day')
+    weight = request.args.get('weight')
+    fatratio = request.args.get('fatratio')
+    # 必須項目
+    if not day:
+        flash('日付が指定されていません。', 'error')
+        err = True
+    if not weight:
+        flash('体重が指定されていません。', 'error')
+        err = True
+    if err:
+        return redirect(url_for('index'))
+    # フォーマットチェック&フォーマット正規化
+    try:
+        day = datetime.datetime.strptime(day, '%Y-%m-%d').strftime('%Y-%m-%d')
+    except ValueError:
+        flash('日付が不正なフォーマットです。', 'error')
+        err = True
+    try:
+        weight = round(float(weight), 1)
+    except ValueError:
+        flash('体重を数値で指定してください。', 'error')
+        err = True
+    if fatratio:
+        try:
+            fatratio = round(float(fatratio), 1)
+        except ValueError:
+            flash('体脂肪率を数値で指定してください。', 'error')
+            err = True
+    if err:
+        return redirect(url_for('index'))
+
+    # 登録
+    w = Weight.update(session['user']['id'], day, weight, fatratio)
+    flash('%sの体重を登録しました。' % w['day'], 'info')
+    return redirect(url_for('index'))
 
 @app.route('/signout')
 def signout():
@@ -209,4 +312,5 @@ if __name__ == '__main__':
     app.secret_key = config['secret_key']
     logging.basicConfig(level=logging.DEBUG, format= \
         '%(asctime)s %(funcName)s@%(filename)s(%(lineno)d) [%(levelname)s] %(message)s')
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
     app.run(debug=True, host='0.0.0.0')
