@@ -1,3 +1,8 @@
+create table config (
+	key	text not null primary key,
+	value	text
+);
+
 create table users (
 	id 			integer primary key autoincrement,
 	service			text not null,
@@ -16,4 +21,9 @@ create table weights (
 	primary key (userid, day)
 );
 
+create photo (
+	id		integer primary key autoincrement,
+	userid		integer not null,
+	crea		text not null,
+	
 

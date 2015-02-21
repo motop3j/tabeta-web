@@ -13,6 +13,8 @@ import yaml
 import sqlite3
 import datetime
 import tempfile
+import yaml
+import PIL.Image
 
 class FlaskWithHamlish(Flask):
     jinja_options = werkzeug.ImmutableDict(extensions = [
@@ -48,10 +50,10 @@ class DB:
 
 class Weight:
     @classmethod
-    def update(cls, id, day, weight, fatratio=None):
+    def update(cls, userid, day, weight, fatratio=None):
         con = DB.get()
         cur = con.cursor()
-        weights = cls.get(id, day, cur)
+        weights = cls.get(userid, day, cur)
         params = []
         if weights:
             sql = '''
@@ -60,14 +62,14 @@ class Weight:
             '''
         else:
             sql = 'insert into weights (weight, fatratio, userid, day) values (?, ?, ?, ?)'
-        params.extend((weight * 10, fatratio * 10 if fatratio else None, id, day))
+        params.extend((weight * 10, fatratio * 10 if fatratio else None, userid, day))
         cur.execute(sql, params)
         con.commit()
         con.close()
-        return cls.get(id, day)[0]
+        return cls.get(userid, day)[0]
         
     @classmethod
-    def get(cls, id, day=None, cur=None):
+    def get(cls, userid, day=None, cur=None):
         sql = 'select day, weight, fatratio from weights'
         params = ()
         if day:
@@ -77,9 +79,15 @@ class Weight:
         rows = DB.execute(sql, params, cur)
         weights = []
         for r in rows:
-            weights.append({'userid': id, 'day': r[0], 'weight': r[1]/10.0,
+            weights.append({'userid': userid, 'day': r[0], 'weight': r[1]/10.0,
                 'fatratio': r[2]/10.0 if r[2] else None})
         return weights 
+
+class Photo:
+    @classmethod
+    def add(cls, userid, date, maker, make, model, img):
+        return None
+
 
 class User:
     @classmethod
@@ -126,9 +134,9 @@ class User:
                 'profile_image_url': r[3], 'access_token': r[4], 
                 'access_token_secret': r[5]}
 
-
         log.debug('user: %s' % str(user))
         return user
+
 
 class Twitter:
     CONSUMER_KEY    = None
@@ -231,9 +239,15 @@ def regist_photo():
     log.debug(request.files)
     f = request.files['photo']
     log.debug(f)
-    p = os.path.join(tempfile.mkdtemp(), 'image.' + f.filename.rsplit('.', 1)[1])
+    p = os.path.join(tempfile.mkdtemp(), 'image.' + f.filename.rsplit('.', 1)[1].lower())
     f.save(p)
     log.debug(p)
+    img = PIL.Image.open(p, 'r')
+    exif = img._getexif()
+    img.close()
+    gps = exif[34853]
+    log.debug(yaml.dump(gps))
+    log.debug(gps)
 
     return ""
 
