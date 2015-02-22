@@ -21,7 +21,6 @@
     %button type='submit' class='btn btn-default'
       登録
 
-
 -block view_weight
   %table.table.nth-child
     %thead
@@ -46,12 +45,18 @@
   %form action="{{ url_for('regist_photo') }}" method='post' enctype='multipart/form-data'
     %div.form-group
       %label for='photoEntry'
-        日付
+        写真
       %input.form-control id='photoEntry' name='photo' type='file' required='required'
     %button type='submit' class='btn btn-default'
       登録
 
   
 -block view_photo
-
+  -for photo in data['photos']:
+    %div.panel.panel-success
+      %div.panel-heading
+        %div.panel-title
+          {{photo['date']}} [ {{photo['make']}} / {{photo['model']}} ]
+      %div.panel-body
+        %img.img-thumbnail src="{{ url_for('get_photo', id=photo['id']) }}"
 

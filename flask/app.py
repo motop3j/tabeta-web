@@ -1,9 +1,9 @@
 # vim:fileencoding=utf8
-#===========================================================================================
+#=====================================================================================================================
 # 食べた！
-#===========================================================================================
+#=====================================================================================================================
 
-from flask import Flask, flash, request, redirect, render_template, session, url_for
+from flask import Flask, flash, request, redirect, render_template, session, url_for, send_file
 import werkzeug
 import rauth.service
 import rauth.utils 
@@ -11,6 +11,7 @@ import os
 import logging 
 import yaml
 import sqlite3
+import shutil
 import datetime
 import tempfile
 import yaml
@@ -18,8 +19,7 @@ import PIL.Image
 
 class FlaskWithHamlish(Flask):
     jinja_options = werkzeug.ImmutableDict(extensions = [
-        'jinja2.ext.autoescape', 'jinja2.ext.with_',
-        'hamlish_jinja.HamlishExtension'
+        'jinja2.ext.autoescape', 'jinja2.ext.with_', 'hamlish_jinja.HamlishExtension'
     ])
 
 # Flask setup
@@ -56,10 +56,7 @@ class Weight:
         weights = cls.get(userid, day, cur)
         params = []
         if weights:
-            sql = '''
-                update weights set weight = ?, fatratio = ?
-                where userid = ? and day = ?
-            '''
+            sql = 'update weights set weight = ?, fatratio = ?  where userid = ? and day = ?'
         else:
             sql = 'insert into weights (weight, fatratio, userid, day) values (?, ?, ?, ?)'
         params.extend((weight * 10, fatratio * 10 if fatratio else None, userid, day))
@@ -84,10 +81,47 @@ class Weight:
         return weights 
 
 class Photo:
+    CURRENT_IMAGE_PATH = None
     @classmethod
-    def add(cls, userid, date, maker, make, model, img):
-        return None
+    def add(cls, userid, date, make, model, gpsinfo, path):
+        sql = 'insert into photos (userid, date, make, model, gpsinfo, path) values (?, ?, ?, ?, ?, ?)'
+        params = (userid, date, make, model, yaml.dump(gpsinfo) if gpsinfo else None, 'dummy')
+        con = DB.get()
+        cur = con.cursor()
+        cur.execute(sql, params)
+        cur.execute('select last_insert_rowid()')
+        id = cur.fetchone()[0]
+        p = os.path.join(cls.CURRENT_IMAGE_PATH, '%d.%s' % (id, path.rsplit('.', 1)[1]))
+        shutil.move(path, p)
+        cur.execute('update photos set path = ? where id = ?', (p, id))
+        con.commit()
+        con.close()
+        return cls.get(id=id)[0]
 
+    @classmethod
+    def get(cls, id=None, userid=None):
+        sql = 'select id, userid, date, make, model, gpsinfo, path from photos'
+        where = []
+        params = []
+        if id:
+            where.append('id = ?')
+            params.append(id)
+        if userid:
+            where.append('userid = ?')
+            params.append(userid)
+        if len(where) > 0:
+            sql += ' where '
+            for w in where:
+                if len(sql) == len(' where '):
+                    sql += ' and '
+                sql += ' %s ' % w
+        sql += ' order by date desc'
+        rows = DB.execute(sql, params)
+        photos = []
+        for r in rows:
+            photos.append({'id': r[0], 'userid': r[1], 'date': r[2], 'make': r[3], 'model': r[4],
+                           'gpsinfo': yaml.load(r[5]) if r[5] else None, 'path': r[6]})
+        return photos
 
 class User:
     @classmethod
@@ -154,9 +188,9 @@ class Twitter:
         )
         return service
 
-#-------------------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------------------------------------------
 # View
-#-------------------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------------------------------------------
 
 @app.route('/')
 def index():
@@ -182,8 +216,8 @@ def index():
     if not weight:
         weight = 50
         fatratio = 15
-        
-    data={'today': day, 'weight': weight, 'fatratio': fatratio, 'weights': weights}
+    photos = Photo.get(userid=session['user']['id'])
+    data={'today': day, 'weight': weight, 'fatratio': fatratio, 'weights': weights, 'photos': photos}
     return render_template('index.haml', data=data)
  
 @app.route('/signin')
@@ -234,22 +268,36 @@ def callback():
     }
     return redirect(url_for('index'))
 
+@app.route('/photo/<id>')
+def get_photo(id):
+    photo = Photo.get(id=id)[0]
+    
+    return send_file(photo['path'])
+
 @app.route('/regist/photo', methods=['POST'])
 def regist_photo():
-    log.debug(request.files)
     f = request.files['photo']
-    log.debug(f)
     p = os.path.join(tempfile.mkdtemp(), 'image.' + f.filename.rsplit('.', 1)[1].lower())
     f.save(p)
-    log.debug(p)
     img = PIL.Image.open(p, 'r')
     exif = img._getexif()
     img.close()
-    gps = exif[34853]
-    log.debug(yaml.dump(gps))
-    log.debug(gps)
+    date = exif[36867] if 36867 in exif.keys() else \
+           exif[36868] if 36868 in exif.keys() else \
+           exif[306] if 306 in exif.keys() else None
+    if date:
+        date = datetime.datetime.strptime(date, '%Y:%m:%d %H:%M:%S')    
+    else:
+        date = datetime.datetime.now()
+    date = date.strftime('%Y-%m-%d %H:%M:%S')
+    make  = exif[271] if 271 in exif.keys() else None
+    model = exif[272] if 272 in exif.keys() else None
+    gpsinfo = exif[34853] if 34853 in exif.keys() else None
 
-    return ""
+    photo = Photo.add(session['user']['id'], date, make, model, gpsinfo, p)
+    log.debug(photo)
+    flash('写真を登録しました。', 'info')
+    return redirect(url_for('index'))
 
 @app.route('/regist/weight')
 def regist_weight():
@@ -312,9 +360,9 @@ def signout():
 
 
 
-#-------------------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------------------------------------------
 # Main
-#-------------------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------------------------------------------
 
 if __name__ == '__main__':
     with open(os.path.join(os.path.dirname(__file__), 'config.yaml')) as f:
@@ -324,6 +372,11 @@ if __name__ == '__main__':
     DB.DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'db', 'tabeta.sqlite3')
     app.jinja_env.hamlish_mode = 'debug'
     app.secret_key = config['secret_key']
+    if config['current_image_path'][0] == '/':
+        Photo.CURRENT_IMAGE_PATH = config['current_image_path']
+    else:
+        Photo.CURRENT_IMAGE_PATH = os.path.join(
+            os.path.abspath(os.path.dirname(__file__)), config['current_image_path'])
     logging.basicConfig(level=logging.DEBUG, format= \
         '%(asctime)s %(funcName)s@%(filename)s(%(lineno)d) [%(levelname)s] %(message)s')
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
