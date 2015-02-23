@@ -359,25 +359,27 @@ def signout():
     return redirect(url_for('index'))
 
 
-
 #---------------------------------------------------------------------------------------------------------------------
 # Main
 #---------------------------------------------------------------------------------------------------------------------
 
-if __name__ == '__main__':
+def set_app():
     with open(os.path.join(os.path.dirname(__file__), 'config.yaml')) as f:
         config = yaml.load(f)
     Twitter.CONSUMER_KEY = config['twitter']['consumer_key']
     Twitter.CONSUMER_SECRET = config['twitter']['consumer_secret']
     DB.DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'db', 'tabeta.sqlite3')
-    app.jinja_env.hamlish_mode = 'debug'
-    app.secret_key = config['secret_key']
     if config['current_image_path'][0] == '/':
         Photo.CURRENT_IMAGE_PATH = config['current_image_path']
     else:
         Photo.CURRENT_IMAGE_PATH = os.path.join(
             os.path.abspath(os.path.dirname(__file__)), config['current_image_path'])
+    app.secret_key = config['secret_key']
+    app.jinja_env.hamlish_mode = 'debug'
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
+if __name__ == '__main__':
+    set_app()
     logging.basicConfig(level=logging.DEBUG, format= \
         '%(asctime)s %(funcName)s@%(filename)s(%(lineno)d) [%(levelname)s] %(message)s')
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
     app.run(debug=True, host='0.0.0.0')
