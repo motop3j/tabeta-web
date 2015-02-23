@@ -13,48 +13,46 @@
     %script src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js'
     %script src='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/js/bootstrap.min.js'
   %body
-    %div class="container"
-      %div class="header"
-        %nav
-          %ul class="nav nav-pills pull-right"
-            ;%li role="presentation" class="active"
-            ;  %a href="#"
-            ;    Home
-            -if 'user' in session:
-              %li role="presentation"
-                %a href="{{ url_for('signout') }}"
-                   Sign out
-              %li role="presentation"
-                %a href="http://twitter.com/{{ session['user']['screen_name'] }}"
-                  %img src="{{ session['user']['profile_image_url'] }}"
-                  @{{ session['user']['screen_name'] }}
-        %h1 class="text-muted"
-          食べた
-
     %div.container
-      -if 'page_title' in data:
-        %h2
-          {{ data['page_title'] }}
-      -with msgs = get_flashed_messages(category_filter=['error'])
-        -if msgs
-          %span.label.label-danger
-            Error
-          %div.alert.alert-danger role='alert'
-            %ul
-              -for msg in msgs:
-                %li
-                  {{msg}}
-      -with msgs = get_flashed_messages(category_filter=['info'])
-        -if msgs
-          %span.label.label-info
-            Infomation
-          %div.alert.alert-info role='alert'
-            %ul
-              -for msg in msgs:
-                %li
-                  {{msg}}
-      -block sign_in
-      -block regist_weight
-      -block regist_photo
-      -block view_weight
-      -block view_photo
+      %div.row
+        %div.col-xs-12.col-sm-3
+          %div
+            %h1
+              食べた
+            -if 'user' in session:
+              %div
+                %a.btn.btn-default href="http://twitter.com/{{ session['user']['screen_name'] }}" \
+                  target='_blank' role="button"
+                  %img.img-rounded src="{{ session['user']['profile_image_url'] }}"
+                  @{{ session['user']['screen_name'] }}
+              %div
+                %a href="{{ url_for('signout') }}"
+                  Sign out
+
+        %div.col-xs-12.col-sm-9
+          -if 'page_title' in data:
+            %h2
+              {{ data['page_title'] }}
+          -with msgs = get_flashed_messages(category_filter=['error'])
+            -if msgs
+              %span.label.label-danger
+                Error
+              %div.alert.alert-danger role='alert'
+                %ul
+                  -for msg in msgs:
+                    %li
+                      {{msg}}
+          -with msgs = get_flashed_messages(category_filter=['info'])
+            -if msgs
+              %span.label.label-info
+                Infomation
+              %div.alert.alert-info role='alert'
+                %ul
+                  -for msg in msgs:
+                    %li
+                      {{msg}}
+          -block sign_in
+          -block regist_weight
+          -block regist_photo
+          -block view_weight
+          -block view_photo

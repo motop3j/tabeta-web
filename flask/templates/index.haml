@@ -58,5 +58,6 @@
         %div.panel-title
           {{photo['date']}} [ {{photo['make']}} / {{photo['model']}} ]
       %div.panel-body
-        %img.img-thumbnail src="{{ url_for('get_photo', id=photo['id']) }}"
+        %a href="{{ url_for('get_photo', id=photo['id']) }}"
+          %img.img-thumbnail src="{{ url_for('get_thumbnail', id=photo['id']) }}"
 

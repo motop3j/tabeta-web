@@ -23,7 +23,8 @@ create table photos (
     make        text,
     model       text,
     gpsinfo     text,
-    path        text
+    path        text not null,
+    thumbnail   text not null
 );
    
 

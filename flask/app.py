@@ -1,7 +1,7 @@
 # vim:fileencoding=utf8
-#=====================================================================================================================
+#====================================================================================================================
 # 食べた！
-#=====================================================================================================================
+#====================================================================================================================
 
 from flask import Flask, flash, request, redirect, render_template, session, url_for, send_file
 import werkzeug
@@ -84,23 +84,36 @@ class Photo:
     CURRENT_IMAGE_PATH = None
     @classmethod
     def add(cls, userid, date, make, model, gpsinfo, path):
-        sql = 'insert into photos (userid, date, make, model, gpsinfo, path) values (?, ?, ?, ?, ?, ?)'
-        params = (userid, date, make, model, yaml.dump(gpsinfo) if gpsinfo else None, 'dummy')
+        sql = 'insert into photos (userid, date, make, model, gpsinfo, path, thumbnail) values (?, ?, ?, ?, ?, ?, ?)'
+        params = (userid, date, make, model, yaml.dump(gpsinfo) if gpsinfo else None, 'dummy', 'dummy')
         con = DB.get()
         cur = con.cursor()
         cur.execute(sql, params)
         cur.execute('select last_insert_rowid()')
         id = cur.fetchone()[0]
         p = os.path.join(cls.CURRENT_IMAGE_PATH, '%d.%s' % (id, path.rsplit('.', 1)[1]))
-        shutil.move(path, p)
-        cur.execute('update photos set path = ? where id = ?', (p, id))
+        img = PIL.Image.open(path)
+        size = img.size[0] if img.size[0] > img.size[1] else img.size[1]
+        if size > 800:
+            img.thumbnail((800, 800), PIL.Image.ANTIALIAS)
+            img.save(p, 'JPEG', quality=100, optimize=True)
+        else:
+            shutil.copyfile(path, p)
+        t = os.path.join(cls.CURRENT_IMAGE_PATH, 's-%d.%s' % (id, path.rsplit('.', 1)[1]))
+        if size > 360:
+            img.thumbnail((360, 360), PIL.Image.ANTIALIAS)
+            img.save(t, 'JPEG', quality=100, optimize=True)
+        else:
+            shutil.copyfile(path, t)
+        img.close()
+        cur.execute('update photos set path = ?, thumbnail = ? where id = ?', (p, t, id))
         con.commit()
         con.close()
         return cls.get(id=id)[0]
 
     @classmethod
     def get(cls, id=None, userid=None):
-        sql = 'select id, userid, date, make, model, gpsinfo, path from photos'
+        sql = 'select id, userid, date, make, model, gpsinfo, path, thumbnail from photos'
         where = []
         params = []
         if id:
@@ -120,7 +133,7 @@ class Photo:
         photos = []
         for r in rows:
             photos.append({'id': r[0], 'userid': r[1], 'date': r[2], 'make': r[3], 'model': r[4],
-                           'gpsinfo': yaml.load(r[5]) if r[5] else None, 'path': r[6]})
+                           'gpsinfo': yaml.load(r[5]) if r[5] else None, 'path': r[6], 'thumbnail': r[7]})
         return photos
 
 class User:
@@ -271,8 +284,13 @@ def callback():
 @app.route('/photo/<id>')
 def get_photo(id):
     photo = Photo.get(id=id)[0]
-    
     return send_file(photo['path'])
+
+@app.route('/thumbnail/<id>')
+def get_thumbnail(id):
+    photo = Photo.get(id=id)[0]
+    return send_file(photo['thumbnail'])
+
 
 @app.route('/regist/photo', methods=['POST'])
 def regist_photo():
@@ -295,6 +313,7 @@ def regist_photo():
     gpsinfo = exif[34853] if 34853 in exif.keys() else None
 
     photo = Photo.add(session['user']['id'], date, make, model, gpsinfo, p)
+    os.remove(p)
     log.debug(photo)
     flash('写真を登録しました。', 'info')
     return redirect(url_for('index'))
@@ -359,9 +378,9 @@ def signout():
     return redirect(url_for('index'))
 
 
-#---------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------
 # Main
-#---------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------
 
 def set_app():
     with open(os.path.join(os.path.dirname(__file__), 'config.yaml')) as f:
