@@ -67,11 +67,11 @@ class Weight:
         
     @classmethod
     def get(cls, userid, day=None, cur=None):
-        sql = 'select day, weight, fatratio from weights'
-        params = ()
+        sql = 'select day, weight, fatratio from weights where userid = ?'
+        params = [userid]
         if day:
-            sql += ' where day = ?'
-            params = (day,)
+            sql += ' and day = ?'
+            params.append(day)
         sql += ' order by day desc'
         rows = DB.execute(sql, params, cur)
         weights = []
